@@ -44,11 +44,11 @@ public class GitHubRepoLister {
         try {
             return restTemplate.exchange(url, HttpMethod.GET, entity, responseType).getBody();
         } catch (HttpClientErrorException.Unauthorized e) {
-            throw new UnauthorizedException();
+            throw new AppException.UnauthorizedException();
         } catch (HttpClientErrorException.Forbidden e) {
             throw e.getMessage().contains("rate limit")
-                    ? new RateLimitException() // GitHub returns 403 Forbidden when the rate limit is exceeded
-                    : new ForbiddenException();
+                    ? new AppException.RateLimitException() // GitHub returns 403 Forbidden when the rate limit is exceeded
+                    : new AppException.ForbiddenException();
         }
     }
 
@@ -62,12 +62,12 @@ public class GitHubRepoLister {
 
     private GitHubRepoResponseDto[] fetchRepositories(String username) {
         var url = String.format(GITHUB_API_URL + "/users/%s/repos", username);
-        return handleNotFound(() -> this.executeApiRequest(url, GitHubRepoResponseDto[].class), new UserNotFoundException());
+        return handleNotFound(() -> this.executeApiRequest(url, GitHubRepoResponseDto[].class), new AppException.UserNotFoundException());
     }
 
     private GitHubBranchResponseDto[] fetchBranches(String owner, String repo) {
         var url = String.format(GITHUB_API_URL + "/repos/%s/%s/branches", owner, repo);
-        return handleNotFound(() -> this.executeApiRequest(url, GitHubBranchResponseDto[].class), new RepoNotFoundException());
+        return handleNotFound(() -> this.executeApiRequest(url, GitHubBranchResponseDto[].class), new AppException.RepoNotFoundException());
     }
 
     private ApiRepoResponseDto mapToApiRepoResponseDto(GitHubRepoResponseDto repo) {
