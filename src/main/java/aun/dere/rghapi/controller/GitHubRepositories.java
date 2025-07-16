@@ -1,6 +1,7 @@
 package aun.dere.rghapi.controller;
 
 import aun.dere.rghapi.dto.api.ApiRepoResponseDto;
+import aun.dere.rghapi.exception.RateLimitException;
 import aun.dere.rghapi.exception.UserNotFoundException;
 import aun.dere.rghapi.service.GitHubRepoLister;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,7 +29,11 @@ public class GitHubRepositories {
             return lister.getRepositories(username);
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
-                throw new UserNotFoundException();
+                throw new UserNotFoundException(username);
+            }
+
+            if (e.getStatusCode() == HttpStatus.FORBIDDEN) {
+                throw new RateLimitException();
             }
 
             throw e; // Re-throw other exceptions
