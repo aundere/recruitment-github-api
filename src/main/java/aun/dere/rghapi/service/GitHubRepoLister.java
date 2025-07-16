@@ -4,15 +4,11 @@ import aun.dere.rghapi.config.GitHubConfig;
 import aun.dere.rghapi.dto.api.ApiRepoResponseDto;
 import aun.dere.rghapi.dto.github.GitHubBranchResponseDto;
 import aun.dere.rghapi.dto.github.GitHubRepoResponseDto;
-import aun.dere.rghapi.exception.ForbiddenException;
-import aun.dere.rghapi.exception.RateLimitException;
-import aun.dere.rghapi.exception.RepoNotFoundException;
-import aun.dere.rghapi.exception.UserNotFoundException;
+import aun.dere.rghapi.exception.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
@@ -39,7 +35,8 @@ public class GitHubRepoLister {
     private <T> T makeRequest(String url, Class<T> responseType) {
         var headers = new HttpHeaders();
 
-        if (config.getToken() != null && !config.getToken().equals("${GITHUB_TOKEN}")) {
+        // Default token value is "${GITHUB_TOKEN}", not null.
+        if (!config.getToken().equals("${GITHUB_TOKEN}")) {
             headers.set("Authorization", "Bearer " + config.getToken());
         }
 
@@ -47,48 +44,35 @@ public class GitHubRepoLister {
 
         try {
             return restTemplate.exchange(url, HttpMethod.GET, entity, responseType).getBody();
-        } catch (HttpClientErrorException e) {
+        } catch (HttpClientErrorException.Unauthorized _e) {
+            throw new UnauthorizedException();
+        } catch (HttpClientErrorException.Forbidden e) {
             // GitHub returns 403 Forbidden when the rate limit is exceeded instead of 429 Too Many Requests.
-            if (e.getStatusCode() == HttpStatus.FORBIDDEN && e.getMessage().contains("rate limit")) {
+            if (e.getMessage().contains("rate limit")) {
                 throw new RateLimitException();
             }
 
-            // And 403 Forbidden when the access is denied.
-            if (e.getStatusCode() == HttpStatus.FORBIDDEN) {
-                throw new ForbiddenException();
-            }
-
-            throw e;
+            throw new ForbiddenException();
         }
     }
 
     private GitHubRepoResponseDto[] getRepos(String username) {
-        String url = String.format(GITHUB_API_URL + "/users/%s/repos", username);
+        var url = String.format(GITHUB_API_URL + "/users/%s/repos", username);
 
         try {
             return this.makeRequest(url, GitHubRepoResponseDto[].class);
-        } catch (HttpClientErrorException e) {
-            // Checking for 404 Not Found to handle the case when the user does not exist.
-            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
-                throw new UserNotFoundException();
-            }
-
-            throw e;
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new UserNotFoundException();
         }
     }
 
     private GitHubBranchResponseDto[] getBranches(String owner, String repo) {
-        String url = String.format(GITHUB_API_URL + "/repos/%s/%s/branches", owner, repo);
+        var url = String.format(GITHUB_API_URL + "/repos/%s/%s/branches", owner, repo);
 
         try {
             return this.makeRequest(url, GitHubBranchResponseDto[].class);
-        } catch (HttpClientErrorException e) {
-            // Checking for 404 Not Found to handle the case when the repository does not exist.
-            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
-                throw new RepoNotFoundException();
-            }
-
-            throw e;
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new RepoNotFoundException();
         }
     }
 
