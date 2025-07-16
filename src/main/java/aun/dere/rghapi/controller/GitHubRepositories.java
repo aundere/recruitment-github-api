@@ -1,6 +1,6 @@
 package aun.dere.rghapi.controller;
 
-import aun.dere.rghapi.model.GitHubRepoDto;
+import aun.dere.rghapi.dto.api.ApiRepoResponseDto;
 import aun.dere.rghapi.service.GitHubRepoLister;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,7 +20,7 @@ public class GitHubRepositories {
     }
 
     @GetMapping("/repositories/{username}")
-    public Collection<GitHubRepoDto> hello(@PathVariable String username) {
+    public Collection<ApiRepoResponseDto> hello(@PathVariable String username) {
         return lister.getRepositories(username);
     }
 }
