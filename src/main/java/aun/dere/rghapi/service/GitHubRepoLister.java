@@ -39,8 +39,12 @@ public class GitHubRepoLister {
                 .map(x -> new ApiRepoResponseDto(x.owner().login(), x.name(), new ArrayList<>()))
                 .toList();
 
-        for (ApiRepoResponseDto repo : repos) {
-            repo.branches().add(new ApiRepoResponseDto.GitHubRepoBranch("master", "test")); // Placeholder for master branch
+        for (var repo : repos) {
+            var branches = Arrays.stream(this.getBranches(repo.owner(), repo.name()))
+                    .map(x -> new ApiRepoResponseDto.GitHubRepoBranch(x.name(), x.commit().sha()))
+                    .toList();
+
+            repo.branches().addAll(branches);
         }
 
         return repos;
