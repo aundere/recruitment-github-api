@@ -10,12 +10,12 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-public class GitHubRepositories {
+public class RepositoryController {
 
     private final GitHubRepoLister lister;
 
     @Autowired
-    public GitHubRepositories(GitHubRepoLister lister) {
+    public RepositoryController(GitHubRepoLister lister) {
         this.lister = lister;
     }
 
