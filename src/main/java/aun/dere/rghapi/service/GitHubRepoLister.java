@@ -16,6 +16,7 @@ import org.springframework.web.client.RestTemplate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Supplier;
 
 @Service
 public class GitHubRepoLister {
@@ -32,10 +33,8 @@ public class GitHubRepoLister {
         this.config = config;
     }
 
-    private <T> T makeRequest(String url, Class<T> responseType) {
+    private <T> T executeApiRequest(String url, Class<T> responseType) {
         var headers = new HttpHeaders();
-
-        // Default token value is "${GITHUB_TOKEN}", not null.
         if (!config.getToken().equals("${GITHUB_TOKEN}")) {
             headers.set("Authorization", "Bearer " + config.getToken());
         }
@@ -44,51 +43,55 @@ public class GitHubRepoLister {
 
         try {
             return restTemplate.exchange(url, HttpMethod.GET, entity, responseType).getBody();
-        } catch (HttpClientErrorException.Unauthorized _e) {
+        } catch (HttpClientErrorException.Unauthorized e) {
             throw new UnauthorizedException();
         } catch (HttpClientErrorException.Forbidden e) {
-            // GitHub returns 403 Forbidden when the rate limit is exceeded instead of 429 Too Many Requests.
-            if (e.getMessage().contains("rate limit")) {
-                throw new RateLimitException();
-            }
-
-            throw new ForbiddenException();
+            throw e.getMessage().contains("rate limit")
+                    ? new RateLimitException() // GitHub returns 403 Forbidden when the rate limit is exceeded
+                    : new ForbiddenException();
         }
     }
 
-    private GitHubRepoResponseDto[] getRepos(String username) {
+    private <T> T handleNotFound(Supplier<T> supplier, RuntimeException exception) {
+        try {
+            return supplier.get();
+        } catch (HttpClientErrorException.NotFound e) {
+            throw exception;
+        }
+    }
+
+    private GitHubRepoResponseDto[] fetchRepositories(String username) {
         var url = String.format(GITHUB_API_URL + "/users/%s/repos", username);
-
-        try {
-            return this.makeRequest(url, GitHubRepoResponseDto[].class);
-        } catch (HttpClientErrorException.NotFound e) {
-            throw new UserNotFoundException();
-        }
+        return handleNotFound(() -> this.executeApiRequest(url, GitHubRepoResponseDto[].class), new UserNotFoundException());
     }
 
-    private GitHubBranchResponseDto[] getBranches(String owner, String repo) {
+    private GitHubBranchResponseDto[] fetchBranches(String owner, String repo) {
         var url = String.format(GITHUB_API_URL + "/repos/%s/%s/branches", owner, repo);
+        return handleNotFound(() -> this.executeApiRequest(url, GitHubBranchResponseDto[].class), new RepoNotFoundException());
+    }
 
-        try {
-            return this.makeRequest(url, GitHubBranchResponseDto[].class);
-        } catch (HttpClientErrorException.NotFound e) {
-            throw new RepoNotFoundException();
-        }
+    private ApiRepoResponseDto mapToApiRepoResponseDto(GitHubRepoResponseDto repo) {
+        return new ApiRepoResponseDto(repo.owner().login(), repo.name(), new ArrayList<>());
+    }
+
+    private ApiRepoResponseDto.GitHubRepoBranch mapToApiRepoBranch(GitHubBranchResponseDto branch) {
+        return new ApiRepoResponseDto.GitHubRepoBranch(branch.name(), branch.commit().sha());
+    }
+
+    private List<ApiRepoResponseDto.GitHubRepoBranch> fetchAndMapBranches(String owner, String repo) {
+        var branches = this.fetchBranches(owner, repo);
+        return Arrays.stream(branches)
+                .map(this::mapToApiRepoBranch)
+                .toList();
     }
 
     public List<ApiRepoResponseDto> getRepositories(String username) {
-        var repos = Arrays.stream(this.getRepos(username))
+        var repos = Arrays.stream(this.fetchRepositories(username))
                 .filter(x -> !x.fork())
-                .map(x -> new ApiRepoResponseDto(x.owner().login(), x.name(), new ArrayList<>()))
+                .map(this::mapToApiRepoResponseDto)
                 .toList();
 
-        for (var repo : repos) {
-            var branches = Arrays.stream(this.getBranches(repo.owner(), repo.name()))
-                    .map(x -> new ApiRepoResponseDto.GitHubRepoBranch(x.name(), x.commit().sha()))
-                    .toList();
-
-            repo.branches().addAll(branches);
-        }
+        repos.forEach(x -> x.branches().addAll(this.fetchAndMapBranches(x.owner(), x.name())));
 
         return repos;
     }
