@@ -27,7 +27,7 @@ public class GitHubRepoLister {
                         HttpStatusCode::is4xxClientError,
                         (req, res) -> this.throwExceptionByStatus(res.getStatusCode().value()));
 
-        if (!config.getToken().equals("${GITHUB_API_TOKEN}")) {
+        if (config.getToken() != null) {
             builder.defaultHeader("Authorization", "Bearer " + config.getToken());
         }
 

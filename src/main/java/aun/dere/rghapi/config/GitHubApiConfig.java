@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Configuration;
 @ConfigurationProperties(prefix = "github.api")
 public class GitHubApiConfig {
 
-    private String token = "${GITHUB_API_TOKEN}";
+    private String token = null;
 
     private String url = "https://api.github.com";
 
