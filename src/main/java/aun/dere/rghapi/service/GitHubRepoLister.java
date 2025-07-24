@@ -6,11 +6,14 @@ import aun.dere.rghapi.dto.github.GitHubBranchResponseDto;
 import aun.dere.rghapi.dto.github.GitHubRepoResponseDto;
 import aun.dere.rghapi.exception.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -24,9 +27,7 @@ public class GitHubRepoLister {
     public GitHubRepoLister(GitHubApiConfig config) {
         var builder = RestClient.builder()
                 .baseUrl(config.getUrl())
-                .defaultStatusHandler(
-                        HttpStatusCode::is4xxClientError,
-                        (req, res) -> this.throwExceptionByStatus(res.getStatusCode().value()));
+                .defaultStatusHandler(HttpStatusCode::is4xxClientError, this::throwExceptionByStatus);
 
         if (config.getToken() != null) {
             builder.defaultHeader("Authorization", "Bearer " + config.getToken());
@@ -35,7 +36,9 @@ public class GitHubRepoLister {
         this.restClient = builder.build();
     }
 
-    private void throwExceptionByStatus(int status) {
+    private void throwExceptionByStatus(HttpRequest request, ClientHttpResponse response) throws IOException {
+        var status = response.getStatusCode().value();
+
         switch (HttpStatus.valueOf(status)) {
             case UNAUTHORIZED -> throw new AppException.UnauthorizedException();
             case FORBIDDEN -> throw new AppException.ForbiddenException();
