@@ -4,18 +4,6 @@ This is a recruitment task. Implemented in **Java 21** and **Spring 3.5**.
 
 This API provides endpoints to list all GitHub repositories for a given user, which are not forks.
 
-## Endpoints
-
-This API provides the `/repositories/{username}` endpoint to retrieve all not forked repositories for a given
-GitHub user and their branches with the latest commit SHA for each branch.
-
-There is no additional functionality such as pagination or filtering, as the task is focused on a simple implementation.
-
-## Authentication
-
-This API does not require authentication, but you can set up a personal access token in the `GITHUB_TOKEN` environment
-variable to avoid rate limiting issues with the GitHub API.
-
 ## Build and Run
 
 To build and run the application, you need to have **Java 21** installed.
@@ -34,7 +22,21 @@ To run the application, use the following command:
 java -jar recruitment-github-api-1.0.0.jar
 ```
 
-## Example usage with `curl`
+## Usage
+
+### Endpoints
+
+This API provides the `/repositories/{username}` endpoint to retrieve all not forked repositories for a given
+GitHub user and their branches with the latest commit SHA for each branch.
+
+There is no additional functionality such as pagination or filtering, as the task is focused on a simple implementation.
+
+### Authentication
+
+This API does not require authentication, but you can set up a personal access token in the `GITHUB_TOKEN` environment
+variable to avoid rate limiting issues with the GitHub API.
+
+### Example usage with `curl`
 
 ```bash
 curl -sX GET "http://localhost:8080/repositories/octocat" | jq
