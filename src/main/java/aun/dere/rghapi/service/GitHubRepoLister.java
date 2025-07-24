@@ -1,73 +1,62 @@
 package aun.dere.rghapi.service;
 
-import aun.dere.rghapi.config.GitHubConfig;
+import aun.dere.rghapi.config.GitHubApiConfig;
 import aun.dere.rghapi.dto.api.ApiRepoResponseDto;
 import aun.dere.rghapi.dto.github.GitHubBranchResponseDto;
 import aun.dere.rghapi.dto.github.GitHubRepoResponseDto;
 import aun.dere.rghapi.exception.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Supplier;
-
 @Service
 public class GitHubRepoLister {
 
-    private final String GITHUB_API_URL = "https://api.github.com";
-
-    private final RestTemplate restTemplate;
-
-    private final GitHubConfig config;
+    private final RestClient restClient;
 
     @Autowired
-    public GitHubRepoLister(RestTemplate restTemplate, GitHubConfig config) {
-        this.restTemplate = restTemplate;
-        this.config = config;
+    public GitHubRepoLister(GitHubApiConfig config) {
+        var builder = RestClient.builder()
+                .baseUrl(config.getUrl())
+                .defaultStatusHandler(
+                        HttpStatusCode::is4xxClientError,
+                        (req, res) -> this.throwExceptionByStatus(res.getStatusCode().value()));
+
+        if (!config.getToken().equals("${GITHUB_API_TOKEN}")) {
+            builder.defaultHeader("Authorization", "Bearer " + config.getToken());
+        }
+
+        this.restClient = builder.build();
     }
 
-    private <T> T executeApiRequest(String url, Class<T> responseType) {
-        var headers = new HttpHeaders();
-        if (!config.getToken().equals("${GITHUB_TOKEN}")) {
-            headers.set("Authorization", "Bearer " + config.getToken());
-        }
-
-        var entity = new HttpEntity<>(headers);
-
-        try {
-            return restTemplate.exchange(url, HttpMethod.GET, entity, responseType).getBody();
-        } catch (HttpClientErrorException.Unauthorized e) {
-            throw new AppException.UnauthorizedException();
-        } catch (HttpClientErrorException.Forbidden e) {
-            throw e.getMessage().contains("rate limit")
-                    ? new AppException.RateLimitException() // GitHub returns 403 Forbidden when the rate limit is exceeded
-                    : new AppException.ForbiddenException();
+    private void throwExceptionByStatus(int status) {
+        switch (HttpStatus.valueOf(status)) {
+            case UNAUTHORIZED -> throw new AppException.UnauthorizedException();
+            case FORBIDDEN -> throw new AppException.ForbiddenException();
+            case NOT_FOUND -> throw new AppException.NotFoundException();
+            default -> throw new RuntimeException("Unexpected GitHub API status code: " + status);
         }
     }
 
-    private <T> T handleNotFound(Supplier<T> supplier, RuntimeException exception) {
-        try {
-            return supplier.get();
-        } catch (HttpClientErrorException.NotFound e) {
-            throw exception;
-        }
+    private <T> T executeApiRequest(Class<T> responseType, String url, Object... uriParameters) {
+        return restClient.get()
+                .uri(url, uriParameters)
+                .retrieve()
+                .toEntity(responseType)
+                .getBody();
     }
 
     private GitHubRepoResponseDto[] fetchRepositories(String username) {
-        var url = String.format(GITHUB_API_URL + "/users/%s/repos", username);
-        return handleNotFound(() -> this.executeApiRequest(url, GitHubRepoResponseDto[].class), new AppException.UserNotFoundException());
+        return this.executeApiRequest(GitHubRepoResponseDto[].class, "/users/{username}/repos", username);
     }
 
     private GitHubBranchResponseDto[] fetchBranches(String owner, String repo) {
-        var url = String.format(GITHUB_API_URL + "/repos/%s/%s/branches", owner, repo);
-        return handleNotFound(() -> this.executeApiRequest(url, GitHubBranchResponseDto[].class), new AppException.RepoNotFoundException());
+        return this.executeApiRequest(GitHubBranchResponseDto[].class, "/repos/{owner}/{repo}/branches", owner, repo);
     }
 
     private ApiRepoResponseDto mapToApiRepoResponseDto(GitHubRepoResponseDto repo) {
